@@ -14,6 +14,11 @@ const s3Client = new S3Client({
     },
 });
 
+// --- Rate Limiting Configuration (In-Memory) ---
+const userRequestTimestamps = new Map(); // Stores userId -> [timestamp1, timestamp2, ...]
+const RATE_LIMIT_COUNT = 5; // Max 5 requests
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // Per 1 minute (60,000 milliseconds)
+
 const generateInvoicePdf = async (invoiceData, outputPath) => {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ margin: 50 });
@@ -111,8 +116,16 @@ const generateInvoicePdfBuffer = async (invoiceData) => {
 
         doc.moveTo(descX, currentY + 10).lineTo(doc.page.width - 50, currentY + 10).stroke();
 
-        doc.moveDown();
-        doc.fontSize(14).text(`Grand Total: Rs.${invoiceData.grandTotal.toFixed(2)}`, { align: 'right' });
+        doc.moveDown(1.9);
+
+        const grandTotalText = `Grand Total: Rs.${invoiceData.grandTotal.toFixed(2)}`;
+        const grandTotalStartX = priceX;
+        const grandTotalAvailableWidth = (doc.page.width - 50) - grandTotalStartX;
+
+        doc.fontSize(12).text(grandTotalText, grandTotalStartX, doc.y, {
+            align: 'right',
+            width: grandTotalAvailableWidth
+        });
 
         doc.end();
     });
@@ -120,22 +133,39 @@ const generateInvoicePdfBuffer = async (invoiceData) => {
 
 exports.createInvoice = async (req, res) => {
     const { clientName, invoiceDate, lineItems, grandTotal } = req.body;
-    const userId = req.user.id; 
+    const userId = req.user.id;
+
+    // --- Rate Limiting Logic ---
+    const now = Date.now();
+    let timestamps = userRequestTimestamps.get(userId) || [];
+
+    // Clean up old timestamps (outside the window)
+    timestamps = timestamps.filter(timestamp => (now - timestamp) < RATE_LIMIT_WINDOW_MS);
+
+    if (timestamps.length >= RATE_LIMIT_COUNT) {
+        console.warn(`Rate limit exceeded for user ${userId}. Requests in window: ${timestamps.length}`);
+        return res.status(429).json({ message: 'Too many PDF generation requests. Please try again in a minute.' });
+    }
+
+    // Add current request timestamp
+    timestamps.push(now);
+    userRequestTimestamps.set(userId, timestamps);
+    // --- End Rate Limiting Logic ---
+
+    let newInvoice;
 
     try {
-        
-        const newInvoice = new Invoice({
+        newInvoice = new Invoice({
             userId,
             clientName,
-            invoiceDate: new Date(invoiceDate), // Ensure date is correctly parsed
+            invoiceDate: new Date(invoiceDate),
             lineItems,
             grandTotal,
-            status: 'processing'
+            status: 'processing' // Initial status
         });
 
         await newInvoice.save();
 
-         
         res.status(202).json({
             message: 'Invoice processing initiated. Status will update shortly.',
             invoice: {
@@ -149,41 +179,45 @@ exports.createInvoice = async (req, res) => {
             }
         });
 
-        
-        const pdfBuffer = await generateInvoicePdfBuffer(newInvoice); // Get PDF as buffer
-
-        const s3Key = `invoices/${newInvoice._id}.pdf`;
-
-        const upload = new Upload({
-            client: s3Client,
-            params: {
-                Bucket: process.env.AWS_S3_BUCKET_NAME,
-                Key: s3Key, // The file name/path in S3
-                Body: pdfBuffer,
-                ContentType: 'application/pdf',
-            },
-        });
-
-        upload.on('httpUploadProgress', (progress) => {
-            // You can log upload progress if needed
-            // console.log(progress);
-        });
-
-        const data = await upload.done(); // Perform the upload
-        const s3PublicUrl = data.Location; // Get the public URL from S3
-
-        // Update invoice status and pdfUrl upon successful generation & upload
-        newInvoice.status = 'completed';
-        newInvoice.pdfUrl = s3Key; // Store the S3 Key (e.g., "invoices/invoice_ID.pdf")
-        await newInvoice.save();
-        console.log(`PDF generated and uploaded to S3: s3://${process.env.AWS_S3_BUCKET_NAME}/${s3Key}`);
-
     } catch (error) {
-        console.error('Error creating invoice:', error);
-        res.status(500).json({ message: 'Server error during invoice creation.', error: error.message });
+        console.error('Error during initial invoice save:', error);
+        // Remove the timestamp if the request failed before a 202 was successfully sent
+        timestamps = timestamps.filter(ts => ts !== now);
+        userRequestTimestamps.set(userId, timestamps);
+        return res.status(500).json({ message: 'Server error during initial invoice save.', error: error.message });
     }
-};
 
+    (async () => {
+        const pdfFileName = `invoice_${newInvoice._id}.pdf`;
+        const s3Key = `invoices/${pdfFileName}`; // Path inside your S3 bucket
+
+        try {
+            const pdfBuffer = await generateInvoicePdfBuffer(newInvoice);
+
+            const upload = new Upload({
+                client: s3Client,
+                params: {
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: s3Key,
+                    Body: pdfBuffer,
+                    ContentType: 'application/pdf',
+                },
+            });
+
+            const data = await upload.done();
+            newInvoice.pdfUrl = s3Key;
+            newInvoice.status = 'completed';
+            await newInvoice.save();
+            console.log(`PDF generated and uploaded to S3: s3://${process.env.AWS_S3_BUCKET_NAME}/${s3Key}`);
+
+        } catch (pdfError) {
+            console.error(`Error generating or uploading PDF for invoice ${newInvoice._id}:`, pdfError);
+            newInvoice.status = 'failed';
+            newInvoice.pdfUrl = null;
+            await newInvoice.save();
+        }
+    })();
+};
 
 exports.getInvoices = async (req, res) => {
     try {
@@ -194,7 +228,6 @@ exports.getInvoices = async (req, res) => {
         res.status(500).json({ message: 'Server error fetching invoices.', error: error.message });
     }
 };
-
 
 exports.downloadInvoicePdf = async (req, res) => {
     try {
