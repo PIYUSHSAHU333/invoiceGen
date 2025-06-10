@@ -54,7 +54,10 @@ const Home = () => {
             setGeneratedInvoices(sortedInvoices);
         } catch (error) {
             console.error("Error fetching invoices:", error);
-            
+            if (error.response?.status === 401) {
+                alert("Session expired. Please log in again.");
+                handleLogout(); // Log out if unauthorized
+            }
         }
     };
 
@@ -179,7 +182,8 @@ const Home = () => {
         } catch (error) {
             console.error("PDF Generation Error:", error);
             if (error.response?.status === 401) {
-               console.log(error);
+                alert("Session expired. Please log in again.");
+                handleLogout();
             } else {
                 alert(`Failed to initiate invoice generation: ${error.response?.data?.message || error.message}`);
             }
