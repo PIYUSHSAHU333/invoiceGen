@@ -34,7 +34,7 @@ const Register = () => {
                 localStorage.setItem('token', response.data.token);
                 localStorage.setItem('userName', response.data.user.name);
                 localStorage.setItem('userEmail', response.data.user.email);
-                navigate('/home');
+                navigate('/');
             } else {
                 setErrorMessage(response.data.message);
             }

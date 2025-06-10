@@ -1,4 +1,4 @@
-const Invoice = require('../models/invoice.js');
+const Invoice = require('../models/Invoice.js');
 const PDFDocument = require('pdfkit'); 
 const fs = require('fs'); 
 const path = require('path'); 
@@ -19,57 +19,6 @@ const userRequestTimestamps = new Map(); // Stores userId -> [timestamp1, timest
 const RATE_LIMIT_COUNT = 5; // Max 5 requests
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // Per 1 minute (60,000 milliseconds)
 
-const generateInvoicePdf = async (invoiceData, outputPath) => {
-    return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 50 });
-        const stream = fs.createWriteStream(outputPath);
-
-        doc.pipe(stream);
-
-        doc.fontSize(25).text('Invoice', { align: 'center' });
-        doc.moveDown();
-
-        doc.fontSize(12).text(`Client Name: ${invoiceData.clientName}`);
-        doc.text(`Invoice Date: ${invoiceData.invoiceDate.toDateString()}`);
-        doc.moveDown();
-
-        
-        const tableTop = doc.y;
-        const itemX = 50;
-        const descX = 150;
-        const qtyX = 350;
-        const priceX = 400;
-        const totalX = 470;
-
-        doc.fontSize(10)
-            .text('Description', descX, tableTop, { width: 180, align: 'left' })
-            .text('Qty', qtyX, tableTop, { width: 50, align: 'center' })
-            .text('Price (Rs.)', priceX, tableTop, { width: 70, align: 'right' })
-            .text('Total (Rs.)', totalX, tableTop, { width: 70, align: 'right' });
-
-        doc.moveTo(itemX, tableTop + 20).lineTo(doc.page.width - 50, tableTop + 20).stroke();
-
-        let currentY = tableTop + 35;
-        invoiceData.lineItems.forEach(item => {
-            doc.fontSize(10)
-                .text(item.description, descX, currentY, { width: 180, align: 'left' })
-                .text(item.qty, qtyX, currentY, { width: 50, align: 'center' })
-                .text(item.price.toFixed(2), priceX, currentY, { width: 70, align: 'right' })
-                .text(item.total.toFixed(2), totalX, currentY, { width: 70, align: 'right' });
-            currentY += 20;
-        });
-
-        doc.moveTo(itemX, currentY + 10).lineTo(doc.page.width - 50, currentY + 10).stroke();
-
-        doc.moveDown();
-        doc.fontSize(14).text(`Grand Total: Rs.${invoiceData.grandTotal.toFixed(2)}`, { align: 'right' });
-
-        doc.end();
-
-        stream.on('finish', resolve);
-        stream.on('error', reject);
-    });
-};
 
 const generateInvoicePdfBuffer = async (invoiceData) => {
     return new Promise((resolve, reject) => {
@@ -150,7 +99,6 @@ exports.createInvoice = async (req, res) => {
     // Add current request timestamp
     timestamps.push(now);
     userRequestTimestamps.set(userId, timestamps);
-    // --- End Rate Limiting Logic ---
 
     let newInvoice;
 

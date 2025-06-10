@@ -36,7 +36,7 @@ const SignIn = () => {
                 localStorage.setItem('token', token)
                 localStorage.setItem('userName', user.name)
                 localStorage.setItem('userEmail', user.email)
-                navigate("/home")
+                navigate("/")
             } else {
                 setErrorMessage(message || "Login failed. Please try again.")
             }
