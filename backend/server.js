@@ -9,9 +9,14 @@ console.log("--- SERVER.JS STARTING ---");
 console.log("MONGO_URI loaded:", process.env.MONGO_URI ? "Yes" : "No");
 console.log("JWT_SECRET loaded:", process.env.JWT_SECRET ? "Yes" : "No");
 console.log("AWS_S3_BUCKET_NAME loaded:", process.env.AWS_S3_BUCKET_NAME ? "Yes" : "No");
-
+const corsOptions = {
+  origin: "https://invoice-gen-pink.vercel.app",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 const port = 3000;
 
