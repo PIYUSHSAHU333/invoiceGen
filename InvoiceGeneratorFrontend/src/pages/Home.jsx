@@ -43,7 +43,7 @@ const Home = () => {
             console.log('fetchInvoices: Sending GET request with token:', token); // DEBUG LOG
             const response = await axios.get(`${API}/api/invoices`, {
                 headers: {
-                    Authorization: `Bearer ${token}` // Send the token
+                    Authorization: `Bearer ${token}` 
                 }
             });
            
@@ -54,10 +54,7 @@ const Home = () => {
             setGeneratedInvoices(sortedInvoices);
         } catch (error) {
             console.error("Error fetching invoices:", error);
-            if (error.response?.status === 401) {
-                alert("Session expired. Please log in again.");
-                handleLogout(); // Log out if unauthorized
-            }
+            
         }
     };
 
