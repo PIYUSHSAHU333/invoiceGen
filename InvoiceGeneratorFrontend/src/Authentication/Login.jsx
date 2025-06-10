@@ -13,7 +13,7 @@ const SignIn = () => {
 
     useEffect(() => {
         if (token) {
-            navigate("/home");
+            navigate("/");
         }
     }, [token, navigate]);
 
