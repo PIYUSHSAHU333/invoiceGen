@@ -179,8 +179,7 @@ const Home = () => {
         } catch (error) {
             console.error("PDF Generation Error:", error);
             if (error.response?.status === 401) {
-                alert("Session expired. Please log in again.");
-                handleLogout();
+               console.log(error);
             } else {
                 alert(`Failed to initiate invoice generation: ${error.response?.data?.message || error.message}`);
             }
